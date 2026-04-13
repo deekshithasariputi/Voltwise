@@ -5,7 +5,7 @@ Voltwise is a full-stack web application designed to help users track, analyze, 
 ---
 
 ## 🚀 Live Demo
-🔗 [Click here to view live project](#)  
+🔗 Click here to view live project 
 https://voltwise-app.netlify.app/
 
 ---
