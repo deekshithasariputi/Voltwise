@@ -1,0 +1,1942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoltWise — Household Electricity Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+  <!-- Firebase SDK (v10 modular via CDN compat build) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0f1e;
+      --bg2: #0f1629;
+      --bg3: #141d35;
+      --card: #111827;
+      --card2: #1a2338;
+      --border: #1e2d4a;
+      --border2: #243356;
+      --accent: #00d4ff;
+      --accent2: #0099cc;
+      --green: #00e676;
+      --red: #ff4444;
+      --yellow: #ffb300;
+      --purple: #a855f7;
+      --text: #e8f0fe;
+      --text2: #8ba3c7;
+      --text3: #4a6080;
+      --glow: 0 0 20px rgba(0,212,255,0.15);
+      --glow2: 0 0 40px rgba(0,212,255,0.08);
+      --font-display: 'Syne', sans-serif;
+      --font-body: 'DM Sans', sans-serif;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    [data-theme="light"] {
+      --bg: #f0f4ff;
+      --bg2: #e8eeff;
+      --bg3: #dde5ff;
+      --card: #ffffff;
+      --card2: #f5f7ff;
+      --border: #d0d9f0;
+      --border2: #b8c5e8;
+      --text: #0d1b3e;
+      --text2: #3a5080;
+      --text3: #8090b0;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 20% 10%, rgba(0,212,255,0.06) 0%, transparent 60%),
+                  radial-gradient(ellipse 60% 80% at 80% 80%, rgba(168,85,247,0.05) 0%, transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.02em; }
+
+    /* ===== AUTH SCREEN ===== */
+    #auth-screen {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px; position: relative; z-index: 1;
+    }
+
+    .auth-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 48px 40px;
+      width: 100%; max-width: 440px;
+      box-shadow: var(--glow2), 0 32px 64px rgba(0,0,0,0.4);
+      animation: slideUp 0.5s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .auth-logo {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .auth-logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 24px rgba(0,212,255,0.3);
+    }
+
+    .auth-logo-text { font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+    .auth-logo-sub { font-size: 12px; color: var(--text2); font-weight: 400; }
+
+    .auth-title { font-size: 28px; margin-bottom: 8px; }
+    .auth-subtitle { color: var(--text2); font-size: 14px; margin-bottom: 32px; font-weight: 300; }
+
+    .auth-switch {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 14px;
+      color: var(--text2);
+    }
+    .auth-switch .link-btn { font-size: 14px; }
+
+    /* ===== FORM ELEMENTS ===== */
+    .form-group { margin-bottom: 20px; }
+    .form-label {
+      display: block; font-size: 12px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text2); margin-bottom: 8px;
+    }
+
+    .form-input, .form-select {
+      width: 100%; padding: 12px 16px;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-family: var(--font-body); font-size: 15px;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      outline: none; appearance: none;
+    }
+
+    .form-input:focus, .form-select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,212,255,0.12);
+    }
+
+    .form-select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238ba3c7' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+
+    .form-error { color: var(--red); font-size: 12px; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+
+    /* ===== BUTTONS ===== */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 24px; border-radius: var(--radius-sm);
+      font-family: var(--font-display); font-weight: 600; font-size: 14px;
+      cursor: pointer; border: none; transition: all var(--transition);
+      text-decoration: none; letter-spacing: 0.02em;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #0080ff);
+      color: #fff; width: 100%; padding: 14px;
+      box-shadow: 0 4px 20px rgba(0,212,255,0.25);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(0,212,255,0.35); }
+    .btn-primary:active { transform: translateY(0); }
+
+    .btn-secondary {
+      background: var(--card2); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    .btn-danger { background: rgba(255,68,68,0.12); color: var(--red); border: 1px solid rgba(255,68,68,0.2); }
+    .btn-danger:hover { background: rgba(255,68,68,0.2); }
+
+    .btn-success { background: rgba(0,230,118,0.12); color: var(--green); border: 1px solid rgba(0,230,118,0.2); }
+    .btn-success:hover { background: rgba(0,230,118,0.2); }
+
+    .btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 8px; }
+    .btn-icon { padding: 8px; border-radius: 8px; aspect-ratio: 1; }
+
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+    /* ===== NAVBAR ===== */
+    #navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10,15,30,0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      transition: background var(--transition);
+    }
+
+    [data-theme="light"] #navbar { background: rgba(240,244,255,0.85); }
+
+    .nav-logo { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 800; font-size: 18px; }
+    .nav-logo-icon { width: 34px; height: 34px; background: linear-gradient(135deg, var(--accent), var(--purple)); border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+    .nav-user { display: flex; align-items: center; gap: 10px; }
+    .nav-avatar { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent), var(--purple)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 14px; color: #fff; }
+    .nav-email { font-size: 13px; color: var(--text2); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .theme-toggle {
+      background: var(--card2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 16px;
+      transition: all var(--transition);
+    }
+    .theme-toggle:hover { background: var(--border); }
+
+    /* ===== MAIN LAYOUT ===== */
+    #app-screen {
+      padding-top: 64px;
+      min-height: 100vh;
+      position: relative; z-index: 1;
+    }
+
+    .container { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+
+    /* ===== TABS ===== */
+    .tabs-bar {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex; gap: 0;
+      position: sticky; top: 64px; z-index: 90;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .tab-btn {
+      padding: 16px 24px; background: none; border: none;
+      color: var(--text2); font-family: var(--font-display); font-weight: 600; font-size: 14px;
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: all var(--transition); white-space: nowrap;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ===== DASHBOARD STATS ===== */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; padding: 24px 0;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      transition: all var(--transition);
+      position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent-grad, linear-gradient(90deg, var(--accent), var(--purple)));
+    }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--glow); border-color: var(--border2); }
+
+    .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text2); font-weight: 500; margin-bottom: 8px; }
+    .stat-value { font-family: var(--font-display); font-size: 28px; font-weight: 800; line-height: 1; }
+    .stat-unit { font-size: 13px; color: var(--text2); margin-top: 4px; }
+    .stat-icon { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); font-size: 32px; opacity: 0.15; }
+
+    /* ===== SECTION LAYOUT ===== */
+    .section { padding: 24px 0; }
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .section-title { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .section-title-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, rgba(0,212,255,0.2), rgba(168,85,247,0.2));
+      border: 1px solid rgba(0,212,255,0.2);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+    }
+
+    /* ===== CARDS ===== */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px;
+      transition: border-color var(--transition);
+    }
+    .card:hover { border-color: var(--border2); }
+
+    /* ===== APPLIANCE LIST ===== */
+    .appliance-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .appliance-item {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      display: flex; align-items: center; gap: 14px;
+      transition: all var(--transition);
+      animation: fadeIn 0.3s ease;
+    }
+    .appliance-item:hover { border-color: var(--border2); transform: translateY(-1px); }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    .appliance-icon {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: linear-gradient(135deg, rgba(0,212,255,0.15), rgba(168,85,247,0.15));
+      border: 1px solid rgba(0,212,255,0.2);
+      display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
+    }
+
+    .appliance-name { font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+    .appliance-watts { font-size: 12px; color: var(--text2); }
+    .appliance-actions { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+
+    /* ===== ADD APPLIANCE FORM ===== */
+    .add-form {
+      background: var(--card2);
+      border: 1px dashed var(--border2);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+    .template-chips {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+    }
+    .template-chip {
+      padding: 6px 12px; border-radius: 20px;
+      background: var(--bg3); border: 1px solid var(--border);
+      font-size: 12px; cursor: pointer;
+      transition: all var(--transition);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .template-chip:hover { background: var(--border); border-color: var(--accent); color: var(--accent); }
+
+    /* ===== CALCULATOR ===== */
+    .calc-layout {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    }
+    @media (max-width: 900px) { .calc-layout { grid-template-columns: 1fr; } }
+
+    .usage-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .usage-row:last-child { border-bottom: none; }
+    .usage-appliance-info { flex: 1; }
+    .usage-hours-input {
+      width: 80px; padding: 8px 10px;
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      font-family: var(--font-body); font-size: 14px; text-align: center;
+      outline: none; transition: all var(--transition);
+    }
+    .usage-hours-input:focus { border-color: var(--accent); }
+    .usage-cost { font-family: var(--font-display); font-weight: 700; font-size: 14px; color: var(--accent); min-width: 70px; text-align: right; }
+
+    /* ===== RESULTS PANEL ===== */
+    .result-panel {
+      background: var(--card2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; position: sticky; top: 130px;
+    }
+
+    .result-amount {
+      font-family: var(--font-display); font-size: 48px; font-weight: 800;
+      line-height: 1; margin-bottom: 4px;
+    }
+
+    .budget-bar-wrap { margin: 16px 0; }
+    .budget-bar-track { height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+    .budget-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+    .budget-bar-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text2); margin-top: 6px; }
+
+    .alert-box {
+      border-radius: var(--radius-sm); padding: 14px 16px;
+      margin-top: 16px; font-size: 13px; line-height: 1.5;
+      display: flex; gap: 10px;
+    }
+    .alert-over { background: rgba(255,68,68,0.1); border: 1px solid rgba(255,68,68,0.25); color: var(--red); }
+    .alert-ok { background: rgba(0,230,118,0.1); border: 1px solid rgba(0,230,118,0.25); color: var(--green); }
+    .alert-warn { background: rgba(255,179,0,0.1); border: 1px solid rgba(255,179,0,0.25); color: var(--yellow); }
+
+    /* ===== RECOMMENDATIONS ===== */
+    .rec-item {
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 10px;
+      font-size: 13px; line-height: 1.5;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .rec-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    /* ===== LOGS TABLE ===== */
+    .log-table-wrap { overflow-x: auto; border-radius: var(--radius); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    thead tr { background: var(--card2); }
+    th { padding: 12px 16px; text-align: left; font-family: var(--font-display); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text2); white-space: nowrap; }
+    td { padding: 14px 16px; border-top: 1px solid var(--border); vertical-align: top; }
+    tr:hover td { background: var(--card2); }
+    .tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag { padding: 2px 8px; border-radius: 4px; background: rgba(0,212,255,0.1); color: var(--accent); font-size: 11px; white-space: nowrap; }
+
+    /* ===== CHART ===== */
+    .chart-wrap { position: relative; height: 280px; }
+
+    /* ===== EMPTY STATES ===== */
+    .empty-state {
+      text-align: center; padding: 48px 24px;
+      color: var(--text2);
+    }
+    .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+    .empty-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .empty-sub { font-size: 14px; color: var(--text3); }
+
+    /* ===== MODAL ===== */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px); z-index: 200;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+      animation: fadeInBg 0.2s ease;
+    }
+    @keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }
+    .modal { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 32px; width: 100%; max-width: 460px; animation: slideUp 0.25s ease; }
+    .modal-title { font-size: 20px; margin-bottom: 24px; }
+
+    /* ===== TOAST ===== */
+    #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 300; display: flex; flex-direction: column; gap: 10px; }
+    .toast {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 18px;
+      font-size: 14px; min-width: 240px; max-width: 340px;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      animation: toastIn 0.3s ease;
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    .toast.success { border-color: rgba(0,230,118,0.3); }
+    .toast.error { border-color: rgba(255,68,68,0.3); }
+    .toast.info { border-color: rgba(0,212,255,0.3); }
+
+    /* ===== MISC ===== */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; font-family: var(--font-display);
+    }
+    .badge-green { background: rgba(0,230,118,0.12); color: var(--green); border: 1px solid rgba(0,230,118,0.2); }
+    .badge-red { background: rgba(255,68,68,0.12); color: var(--red); border: 1px solid rgba(255,68,68,0.2); }
+    .badge-yellow { background: rgba(255,179,0,0.12); color: var(--yellow); border: 1px solid rgba(255,179,0,0.2); }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+    .link-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-family: var(--font-body); font-size: 14px; text-decoration: underline; }
+    .tariff-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.25); color: var(--purple); border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 500; }
+    .search-input { padding: 10px 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font-body); font-size: 14px; outline: none; width: 220px; transition: all var(--transition); }
+    .search-input:focus { border-color: var(--accent); width: 280px; }
+    .export-hint { font-size: 12px; color: var(--text3); margin-top: 8px; }
+    .log-monthly-cost { font-family: var(--font-display); font-weight: 700; color: var(--yellow); }
+
+    /* Dashboard trend chart full width */
+    .dashboard-chart-wrap { padding-bottom: 24px; }
+
+    /* ===== SUGGESTED DEVICES STYLES ===== */
+    .suggested-device-card {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--transition);
+      font-size: 13px;
+    }
+    .suggested-device-card:hover {
+      border-color: var(--accent);
+      background: rgba(0,212,255,0.08);
+      transform: translateY(-1px);
+    }
+    .suggested-device-card .sd-icon { font-size: 18px; flex-shrink:0; }
+    .suggested-device-card .sd-info { display:flex; flex-direction:column; gap:1px; }
+    .suggested-device-card .sd-name { font-weight: 600; color: var(--text); }
+    .suggested-device-card .sd-watts { font-size: 11px; color: var(--accent); font-weight:500; }
+  </style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-card" id="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon">⚡</div>
+      <div>
+        <div class="auth-logo-text">VoltWise</div>
+        <div class="auth-logo-sub">Household Electricity Tracker</div>
+      </div>
+    </div>
+
+    <!-- Login Panel -->
+    <div id="panel-login">
+      <h2 class="auth-title">Welcome back</h2>
+      <p class="auth-subtitle">Sign in to your VoltWise account.</p>
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input class="form-input" type="email" id="login-email" placeholder="you@example.com" autocomplete="email" />
+        <div class="form-error" id="login-email-error" style="display:none">⚠ Please enter a valid email</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+        <div class="form-error" id="login-pass-error" style="display:none">⚠ Password is required</div>
+      </div>
+      <div class="form-error" id="login-general-error" style="display:none;margin-bottom:12px"></div>
+      <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign In →</button>
+      <div class="auth-switch">
+        Don't have an account? <button class="link-btn" onclick="showAuthPanel('register')">Create one</button>
+      </div>
+    </div>
+
+    <!-- Register Panel -->
+    <div id="panel-register" style="display:none">
+      <h2 class="auth-title">Create Account</h2>
+      <p class="auth-subtitle">Join VoltWise and start tracking your electricity usage.</p>
+      <div class="form-group">
+        <label class="form-label">Email Address</label>
+        <input class="form-input" type="email" id="reg-email" placeholder="you@example.com" autocomplete="email" />
+        <div class="form-error" id="reg-email-error" style="display:none">⚠ Please enter a valid email</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" type="password" id="reg-password" placeholder="At least 6 characters" autocomplete="new-password" />
+        <div class="form-error" id="reg-pass-error" style="display:none">⚠ Password must be at least 6 characters</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Your State</label>
+        <select class="form-select" id="reg-state">
+          <option value="">Select your state...</option>
+        </select>
+        <div class="form-error" id="reg-state-error" style="display:none">⚠ Please select your state</div>
+      </div>
+      <div class="form-error" id="reg-general-error" style="display:none;margin-bottom:12px"></div>
+      <button class="btn btn-primary" id="reg-btn" onclick="doRegister()">Create Account →</button>
+      <div class="auth-switch">
+        Already have an account? <button class="link-btn" onclick="showAuthPanel('login')">Sign in</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- APP SCREEN -->
+<div id="app-screen" style="display:none">
+  <nav id="navbar">
+    <div class="nav-logo">
+      <div class="nav-logo-icon">⚡</div>
+      VoltWise
+    </div>
+    <div class="nav-right">
+      <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+      <div class="nav-user">
+        <div class="nav-avatar" id="nav-avatar"></div>
+        <div>
+          <div class="nav-email" id="nav-email"></div>
+          <div style="font-size:11px;color:var(--text3)" id="nav-state"></div>
+        </div>
+        <button class="btn btn-sm btn-secondary" onclick="logout()">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="tabs-bar">
+    <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
+    <button class="tab-btn" data-tab="appliances" onclick="switchTab('appliances')">🔌 Appliances</button>
+    <button class="tab-btn" data-tab="calculator" onclick="switchTab('calculator')">🧮 Calculator</button>
+    <button class="tab-btn" data-tab="logs" onclick="switchTab('logs')">📋 Usage Logs</button>
+  </div>
+
+  <!-- DASHBOARD TAB -->
+  <div id="tab-dashboard" class="tab-content">
+    <div class="container">
+      <div class="stats-grid" id="stats-grid"></div>
+      <div class="dashboard-chart-wrap">
+        <div class="card">
+          <div class="section-header">
+            <div class="section-title">
+              <div class="section-title-icon">📈</div>
+              7-Day Usage Trend
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLIANCES TAB -->
+  <div id="tab-appliances" class="tab-content" style="display:none">
+    <div class="container">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title"><div class="section-title-icon">🔌</div>My Appliances</div>
+          <button class="btn btn-secondary btn-sm" onclick="toggleAddForm()">+ Add Appliance</button>
+        </div>
+
+        <div class="add-form" id="add-form" style="display:none">
+          <h3 style="font-size:16px;margin-bottom:16px">Add Appliance</h3>
+          <div style="margin-bottom:14px">
+            <div class="form-label">Quick templates</div>
+            <div class="template-chips" id="template-chips"></div>
+          </div>
+          <div style="margin-bottom:16px">
+            <div class="form-label" style="margin-bottom:8px">💡 Suggested Devices & Typical Power Ratings</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px" id="suggested-devices-grid"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Appliance Name</label>
+              <input class="form-input" id="app-name" placeholder="e.g. Ceiling Fan" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Power Rating (Watts)</label>
+              <input class="form-input" id="app-watts" type="number" placeholder="e.g. 75" min="1" max="50000" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Icon (emoji)</label>
+            <input class="form-input" id="app-icon" placeholder="🔌" style="font-size:20px;width:80px" maxlength="2" />
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-primary" style="width:auto;padding:12px 24px" onclick="saveAppliance()">Save Appliance</button>
+            <button class="btn btn-secondary" onclick="toggleAddForm()">Cancel</button>
+          </div>
+        </div>
+
+        <div id="appliance-list-wrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CALCULATOR TAB -->
+  <div id="tab-calculator" class="tab-content" style="display:none">
+    <div class="container">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title"><div class="section-title-icon">🧮</div>Daily Cost Calculator</div>
+          <span class="tariff-badge" id="tariff-display">⚡ — ₹/kWh</span>
+        </div>
+
+        <div class="calc-layout">
+          <div>
+            <div class="card" style="margin-bottom:16px">
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">Monthly Budget (₹)</label>
+                <input class="form-input" id="monthly-budget" type="number" placeholder="e.g. 2000" min="1" oninput="recalculate()" />
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="form-label" style="margin-bottom:16px">Set daily usage hours per appliance</div>
+              <div id="usage-list"></div>
+              <div style="display:flex;gap:10px;margin-top:20px">
+                <button class="btn btn-success" onclick="saveLog()">💾 Save Today's Log</button>
+                <button class="btn btn-secondary btn-sm" onclick="recalculate()">⟳ Recalculate</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Results Panel -->
+          <div class="result-panel" id="result-panel">
+            <div class="form-label">Daily Cost</div>
+            <div class="result-amount" id="result-daily">₹0.00</div>
+            <div style="font-size:13px;color:var(--text2);margin-top:4px">Est. monthly: <strong id="result-monthly">₹0.00</strong></div>
+
+            <div class="budget-bar-wrap" id="budget-bar-wrap" style="display:none">
+              <div class="budget-bar-track">
+                <div class="budget-bar-fill" id="budget-bar" style="width:0%;background:var(--green)"></div>
+              </div>
+              <div class="budget-bar-labels">
+                <span id="bar-used">₹0 used</span>
+                <span id="bar-budget">₹0 budget</span>
+              </div>
+            </div>
+
+            <div id="budget-alert"></div>
+            <hr class="divider" />
+            <div class="form-label">Units Consumed</div>
+            <div style="font-family:var(--font-display);font-size:22px;font-weight:700" id="result-kwh">0.00 kWh/day</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:4px" id="result-rate">@ ₹0/kWh</div>
+            <hr class="divider" />
+            <div id="recommendations"></div>
+
+            <!-- TIME-BASED TRENDS -->
+            <div id="time-trends-section" style="display:none">
+              <hr class="divider" />
+              <div class="form-label" style="margin-bottom:12px">⏱️ Usage Trends</div>
+              <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+                <button class="btn btn-sm" id="trend-btn-hourly"
+                  style="background:rgba(0,212,255,0.15);border:1px solid var(--accent);color:var(--accent)"
+                  onclick="switchTrendView('hourly')">Hourly</button>
+                <button class="btn btn-sm btn-secondary" id="trend-btn-weekly" onclick="switchTrendView('weekly')">Weekly</button>
+                <button class="btn btn-sm btn-secondary" id="trend-btn-monthly" onclick="switchTrendView('monthly')">Monthly</button>
+              </div>
+              <div style="position:relative;height:160px">
+                <canvas id="inline-trend-chart"></canvas>
+              </div>
+              <div id="trend-summary-text" style="font-size:12px;color:var(--text3);margin-top:8px;text-align:center"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUMMARY CHART SECTION -->
+        <div class="card" id="summary-chart-section" style="margin-top:20px;display:none">
+          <div class="section-header" style="margin-bottom:16px">
+            <div class="section-title">
+              <div class="section-title-icon">🥧</div>
+              Appliance Consumption Breakdown
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-sm" id="chart-type-pie"
+                style="background:rgba(0,212,255,0.15);border:1px solid var(--accent);color:var(--accent)"
+                onclick="switchSummaryChart('pie')">Pie</button>
+              <button class="btn btn-sm btn-secondary" id="chart-type-bar" onclick="switchSummaryChart('bar')">Bar</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:center">
+            <div style="position:relative;height:220px">
+              <canvas id="summary-chart"></canvas>
+            </div>
+            <div id="summary-legend" style="font-size:13px;display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+          <p style="font-size:11px;color:var(--text3);margin-top:12px;text-align:center">
+            Based on current daily usage hours and appliance wattage
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGS TAB -->
+  <div id="tab-logs" class="tab-content" style="display:none">
+    <div class="container">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title"><div class="section-title-icon">📋</div>Usage Logs</div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input class="search-input" type="date" id="log-filter-date" onchange="renderLogs()" />
+            <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+          </div>
+        </div>
+        <div class="card log-table-wrap" id="logs-container"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="edit-modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3 class="modal-title">Edit Appliance</h3>
+    <input type="hidden" id="edit-id" />
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input class="form-input" id="edit-name" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Watts</label>
+      <input class="form-input" id="edit-watts" type="number" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Icon</label>
+      <input class="form-input" id="edit-icon" style="font-size:20px;width:80px" maxlength="2" />
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-primary" style="width:auto;padding:12px 24px" onclick="updateAppliance()">Update</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('edit-modal').style.display='none'">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================
+// FIREBASE INITIALIZATION
+// =============================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAoNO2OR7v0xPK8d-jSalR6gGvSOWB_JeI",
+  authDomain: "voltwise-915c1.firebaseapp.com",
+  projectId: "voltwise-915c1",
+  storageBucket: "voltwise-915c1.firebasestorage.app",
+  messagingSenderId: "286006895947",
+  appId: "1:286006895947:web:56f41e48e89e7ac15574ce",
+  measurementId: "G-XQ271QY267"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// =============================================
+// CONSTANTS
+// =============================================
+const STATE_TARIFFS = {
+  "Andhra Pradesh": 6.35, "Arunachal Pradesh": 4.50, "Assam": 6.80,
+  "Bihar": 6.70, "Chhattisgarh": 5.20, "Goa": 3.80, "Gujarat": 5.50,
+  "Haryana": 6.90, "Himachal Pradesh": 4.20, "Jharkhand": 6.40,
+  "Karnataka": 7.20, "Kerala": 5.90, "Madhya Pradesh": 5.80,
+  "Maharashtra": 8.10, "Manipur": 5.00, "Meghalaya": 5.50, "Mizoram": 4.80,
+  "Nagaland": 5.20, "Odisha": 5.60, "Punjab": 7.00, "Rajasthan": 6.50,
+  "Sikkim": 4.50, "Tamil Nadu": 7.50, "Telangana": 6.60, "Tripura": 5.30,
+  "Uttar Pradesh": 6.20, "Uttarakhand": 5.40, "West Bengal": 7.10,
+  "Delhi": 6.00, "Jammu & Kashmir": 4.60, "Ladakh": 4.20,
+  "Chandigarh": 5.80, "Puducherry": 5.50, "Lakshadweep": 3.50,
+  "Dadra & Nagar Haveli": 4.80, "Daman & Diu": 4.60,
+  "Andaman & Nicobar Islands": 4.90,
+};
+
+const TEMPLATES = [
+  { name: "Ceiling Fan", watts: 75, icon: "🌀" },
+  { name: "Air Conditioner (1.5T)", watts: 1500, icon: "❄️" },
+  { name: "Refrigerator", watts: 150, icon: "🧊" },
+  { name: "LED TV (43\")", watts: 80, icon: "📺" },
+  { name: "Washing Machine", watts: 500, icon: "🫧" },
+  { name: "Microwave", watts: 1200, icon: "📦" },
+  { name: "Water Heater", watts: 2000, icon: "🚿" },
+  { name: "LED Bulb", watts: 10, icon: "💡" },
+  { name: "Laptop", watts: 65, icon: "💻" },
+  { name: "Desktop PC", watts: 300, icon: "🖥️" },
+  { name: "Iron", watts: 1000, icon: "👔" },
+  { name: "Water Pump", watts: 750, icon: "💧" },
+  { name: "Mixer/Grinder", watts: 750, icon: "🥤" },
+  { name: "Induction Cooktop", watts: 2000, icon: "🍳" },
+  { name: "Electric Kettle", watts: 1500, icon: "☕" },
+];
+
+const SUGGESTED_DEVICES = [
+  { name: "Ceiling Fan", watts: 75, icon: "🌀" },
+  { name: "Table Fan", watts: 40, icon: "🌬️" },
+  { name: "Air Conditioner (1T)", watts: 1000, icon: "❄️" },
+  { name: "Air Conditioner (1.5T)", watts: 1500, icon: "❄️" },
+  { name: "Air Conditioner (2T)", watts: 2000, icon: "❄️" },
+  { name: "Refrigerator (Single Door)", watts: 100, icon: "🧊" },
+  { name: "Refrigerator (Double Door)", watts: 200, icon: "🧊" },
+  { name: "LED TV (32\")", watts: 50, icon: "📺" },
+  { name: "LED TV (55\")", watts: 120, icon: "📺" },
+  { name: "Washing Machine (Semi)", watts: 300, icon: "🫧" },
+  { name: "Washing Machine (Auto)", watts: 500, icon: "🫧" },
+  { name: "Microwave Oven", watts: 1200, icon: "📦" },
+  { name: "Electric Geyser", watts: 2000, icon: "🚿" },
+  { name: "Instant Water Heater", watts: 3000, icon: "🚿" },
+  { name: "LED Bulb (9W)", watts: 9, icon: "💡" },
+  { name: "Tube Light (36W)", watts: 36, icon: "💡" },
+  { name: "Laptop", watts: 65, icon: "💻" },
+  { name: "Desktop PC", watts: 300, icon: "🖥️" },
+  { name: "Electric Iron", watts: 1000, icon: "👔" },
+  { name: "Water Pump (0.5HP)", watts: 375, icon: "💧" },
+  { name: "Water Pump (1HP)", watts: 750, icon: "💧" },
+  { name: "Mixer / Grinder", watts: 750, icon: "🥤" },
+  { name: "Induction Cooktop", watts: 2000, icon: "🍳" },
+  { name: "Electric Kettle", watts: 1500, icon: "☕" },
+  { name: "Air Purifier", watts: 50, icon: "🌿" },
+  { name: "Air Cooler", watts: 200, icon: "💨" },
+  { name: "Smartphone Charger", watts: 20, icon: "📱" },
+  { name: "Wi-Fi Router", watts: 10, icon: "📶" },
+  { name: "Electric Oven", watts: 1500, icon: "🔥" },
+  { name: "Food Processor", watts: 600, icon: "🍽️" },
+  { name: "Vacuum Cleaner", watts: 1200, icon: "🌪️" },
+  { name: "Dishwasher", watts: 1500, icon: "🍽️" },
+  { name: "Treadmill", watts: 1000, icon: "🏃" },
+];
+
+// =============================================
+// APP STATE
+// =============================================
+let currentUser = null; // Firebase auth user object
+let currentUserState = ''; // Indian state chosen at registration
+let trendChart = null;
+let inlineTrendChart = null;
+let summaryChartInstance = null;
+let currentTrendView = 'hourly';
+let currentSummaryChartType = 'pie';
+let usageHours = {};
+let cachedData = { appliances: [], logs: [], budget: 0 };
+
+const themeStore = {
+  get: () => { try { return localStorage.getItem('vw_theme') || 'dark'; } catch { return 'dark'; } },
+  set: (v) => { try { localStorage.setItem('vw_theme', v); } catch {} },
+};
+
+// =============================================
+// FIREBASE AUTH — OBSERVER
+// =============================================
+auth.onAuthStateChanged(async (user) => {
+  if (user) {
+    currentUser = user;
+    await loadUserProfile(); // loads state from Firestore
+    enterApp();
+  } else {
+    currentUser = null;
+    currentUserState = '';
+    cachedData = { appliances: [], logs: [], budget: 0 };
+    usageHours = {};
+    showAuthScreen();
+  }
+});
+
+// =============================================
+// AUTH UI
+// =============================================
+function showAuthPanel(panel) {
+  document.getElementById('panel-login').style.display = panel === 'login' ? 'block' : 'none';
+  document.getElementById('panel-register').style.display = panel === 'register' ? 'block' : 'none';
+  clearAuthErrors();
+}
+
+function clearAuthErrors() {
+  ['login-email-error','login-pass-error','login-general-error',
+   'reg-email-error','reg-pass-error','reg-state-error','reg-general-error'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; el.textContent = ''; }
+  });
+}
+
+function showAuthScreen() {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app-screen').style.display = 'none';
+}
+
+function initStateSelect() {
+  const sel = document.getElementById('reg-state');
+  Object.keys(STATE_TARIFFS).sort().forEach(s => {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    sel.appendChild(o);
+  });
+  sel.value = "Andhra Pradesh";
+}
+
+// =============================================
+// FIREBASE AUTH — LOGIN
+// =============================================
+async function doLogin() {
+  clearAuthErrors();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  let valid = true;
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    document.getElementById('login-email-error').style.display = 'flex'; valid = false;
+  }
+  if (!password) {
+    document.getElementById('login-pass-error').style.display = 'flex'; valid = false;
+  }
+  if (!valid) return;
+
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Signing in...';
+
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+    // onAuthStateChanged will handle the rest
+  } catch (err) {
+    const msg = firebaseAuthError(err.code);
+    const errEl = document.getElementById('login-general-error');
+    errEl.textContent = '⚠ ' + msg;
+    errEl.style.display = 'flex';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Sign In →';
+}
+
+// =============================================
+// FIREBASE AUTH — REGISTER
+// =============================================
+async function doRegister() {
+  clearAuthErrors();
+  const email = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const state = document.getElementById('reg-state').value;
+  let valid = true;
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    document.getElementById('reg-email-error').style.display = 'flex'; valid = false;
+  }
+  if (password.length < 6) {
+    document.getElementById('reg-pass-error').style.display = 'flex'; valid = false;
+  }
+  if (!state) {
+    document.getElementById('reg-state-error').style.display = 'flex'; valid = false;
+  }
+  if (!valid) return;
+
+  const btn = document.getElementById('reg-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Creating account...';
+
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
+    // Save user profile (state) to Firestore
+    await db.collection('users').doc(cred.user.uid).set({
+      email,
+      state,
+      appliances: [],
+      logs: [],
+      budget: 0,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    showToast('Account created! Welcome to VoltWise ⚡', 'success');
+    // onAuthStateChanged fires automatically
+  } catch (err) {
+    const msg = firebaseAuthError(err.code);
+    const errEl = document.getElementById('reg-general-error');
+    errEl.textContent = '⚠ ' + msg;
+    errEl.style.display = 'flex';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Create Account →';
+}
+
+function firebaseAuthError(code) {
+  const map = {
+    'auth/invalid-email': 'Invalid email address.',
+    'auth/user-not-found': 'No account found with this email.',
+    'auth/wrong-password': 'Incorrect password.',
+    'auth/email-already-in-use': 'An account with this email already exists.',
+    'auth/weak-password': 'Password must be at least 6 characters.',
+    'auth/too-many-requests': 'Too many failed attempts. Please try again later.',
+    'auth/network-request-failed': 'Network error. Please check your connection.',
+    'auth/invalid-credential': 'Incorrect email or password.',
+  };
+  return map[code] || 'Authentication error. Please try again.';
+}
+
+// =============================================
+// LOGOUT
+// =============================================
+async function logout() {
+  try {
+    await auth.signOut();
+    cachedData = { appliances: [], logs: [], budget: 0 };
+    usageHours = {};
+    if (trendChart) { trendChart.destroy(); trendChart = null; }
+    showToast('Logged out successfully.', 'info');
+  } catch (e) {
+    showToast('Logout failed. Please try again.', 'error');
+  }
+}
+
+// =============================================
+// FIRESTORE — LOAD USER DATA
+// =============================================
+async function loadUserProfile() {
+  if (!currentUser) return;
+  try {
+    const doc = await db.collection('users').doc(currentUser.uid).get();
+    if (doc.exists) {
+      const data = doc.data();
+      currentUserState = data.state || '';
+      cachedData.appliances = data.appliances || [];
+      cachedData.budget = data.budget || 0;
+      // Logs are stored as subcollection
+      const logsSnap = await db.collection('users').doc(currentUser.uid)
+        .collection('logs').orderBy('date', 'desc').limit(365).get();
+      cachedData.logs = logsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } else {
+      // User doc missing (edge case) — create it
+      await db.collection('users').doc(currentUser.uid).set({
+        email: currentUser.email,
+        state: '',
+        appliances: [],
+        budget: 0,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      currentUserState = '';
+    }
+  } catch (err) {
+    console.error('Failed to load user data:', err);
+    showToast('Could not load your data. Check your connection.', 'error');
+  }
+}
+
+// =============================================
+// FIRESTORE — SAVE APPLIANCES
+// =============================================
+async function saveAppliancesToFirestore() {
+  if (!currentUser) return;
+  try {
+    await db.collection('users').doc(currentUser.uid).update({
+      appliances: cachedData.appliances,
+    });
+  } catch (err) {
+    console.error('Failed to save appliances:', err);
+    showToast('Failed to save appliance data.', 'error');
+  }
+}
+
+// =============================================
+// FIRESTORE — SAVE BUDGET
+// =============================================
+async function saveBudgetToFirestore(budget) {
+  if (!currentUser) return;
+  try {
+    await db.collection('users').doc(currentUser.uid).update({ budget });
+  } catch (err) {
+    console.error('Failed to save budget:', err);
+  }
+}
+
+// =============================================
+// FIRESTORE — SAVE LOG
+// =============================================
+async function saveLogToFirestore(log) {
+  if (!currentUser) return;
+  const logsRef = db.collection('users').doc(currentUser.uid).collection('logs');
+  // Check if today's log already exists and overwrite it
+  const today = new Date().toDateString();
+  const snap = await logsRef.orderBy('date', 'desc').limit(5).get();
+  for (const doc of snap.docs) {
+    const d = doc.data();
+    if (new Date(d.date).toDateString() === today) {
+      await logsRef.doc(doc.id).delete();
+      break;
+    }
+  }
+  await logsRef.add(log);
+}
+
+// =============================================
+// APP INITIALIZATION
+// =============================================
+async function enterApp() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+
+  const email = currentUser.email;
+  document.getElementById('nav-email').textContent = email;
+  document.getElementById('nav-state').textContent = currentUserState || 'No state set';
+  document.getElementById('nav-avatar').textContent = email[0].toUpperCase();
+
+  const theme = themeStore.get();
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('theme-toggle').textContent = theme === 'dark' ? '🌙' : '☀️';
+
+  const rate = STATE_TARIFFS[currentUserState] || 6;
+  document.getElementById('tariff-display').textContent = `⚡ ${currentUserState || 'Unknown'} — ₹${rate}/kWh`;
+
+  renderDashboard();
+  renderAppliances();
+  renderCalculator();
+  renderLogs();
+  switchTab('dashboard');
+}
+
+// =============================================
+// THEME
+// =============================================
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  themeStore.set(next);
+  document.getElementById('theme-toggle').textContent = next === 'dark' ? '🌙' : '☀️';
+  if (trendChart) setTimeout(renderDashboard, 50);
+}
+
+// =============================================
+// TABS
+// =============================================
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${name}`).style.display = 'block';
+  document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'calculator') renderCalculator();
+}
+
+// =============================================
+// DASHBOARD — STATS + 7-DAY CHART
+// =============================================
+function renderDashboard() {
+  const apps = cachedData.appliances;
+  const logs = cachedData.logs || [];
+  const rate = STATE_TARIFFS[currentUserState] || 6;
+  const budget = cachedData.budget || 0;
+
+  const todayLog = logs[0];
+  const todayCost = todayLog ? todayLog.cost : 0;
+  const totalCost30 = logs.slice(0, 30).reduce((s, l) => s + l.cost, 0);
+
+  let budgetStatusText, budgetStatusColor, budgetStatusIcon;
+  if (!budget) {
+    budgetStatusText = 'No Budget Set'; budgetStatusColor = 'var(--text2)'; budgetStatusIcon = '—';
+  } else if (totalCost30 > budget) {
+    budgetStatusText = 'Budget Exceeded'; budgetStatusColor = 'var(--red)'; budgetStatusIcon = '⚠️';
+  } else {
+    budgetStatusText = 'Within Budget'; budgetStatusColor = 'var(--green)'; budgetStatusIcon = '✅';
+  }
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Appliances Registered</div>
+      <div class="stat-value" style="color:var(--accent)">${apps.length}</div>
+      <div class="stat-unit">${apps.length === 1 ? 'appliance' : 'appliances'}</div>
+      <div class="stat-icon">🔌</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Today's Cost</div>
+      <div class="stat-value" style="color:var(--yellow)">₹${todayCost.toFixed(0)}</div>
+      <div class="stat-unit">${todayLog ? todayLog.totalKwh.toFixed(2) + ' kWh' : 'No log today'}</div>
+      <div class="stat-icon">⚡</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Monthly Cost (30d)</div>
+      <div class="stat-value" style="color:var(--green)">₹${totalCost30.toFixed(0)}</div>
+      <div class="stat-unit">last 30 days</div>
+      <div class="stat-icon">🗓️</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">State Tariff</div>
+      <div class="stat-value" style="color:var(--accent);font-size:24px">₹${rate}/kWh</div>
+      <div class="stat-unit">${currentUserState || '—'}</div>
+      <div class="stat-icon">🏛️</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Budget Status</div>
+      <div class="stat-value" style="color:${budgetStatusColor};font-size:20px;margin-top:4px">${budgetStatusIcon} ${budgetStatusText}</div>
+      <div class="stat-unit">${budget ? '₹' + budget + '/month budget' : 'Set in Calculator tab'}</div>
+      <div class="stat-icon">💰</div>
+    </div>
+  `;
+
+  const last7 = [...logs].slice(0, 7).reverse();
+  const labels = last7.map(l => new Date(l.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' }));
+  const costs = last7.map(l => l.cost);
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  const textColor = isDark ? '#8ba3c7' : '#3a5080';
+
+  if (trendChart) trendChart.destroy();
+  const tCtx = document.getElementById('trend-chart').getContext('2d');
+  trendChart = new Chart(tCtx, {
+    type: 'line',
+    data: {
+      labels: labels.length ? labels : ['No data'],
+      datasets: [{
+        label: 'Daily Cost (₹)',
+        data: costs.length ? costs : [0],
+        borderColor: '#00d4ff',
+        backgroundColor: 'rgba(0,212,255,0.08)',
+        borderWidth: 2,
+        pointBackgroundColor: '#00d4ff',
+        pointRadius: 4,
+        fill: true,
+        tension: 0.4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { color: textColor } },
+        y: { grid: { color: gridColor }, ticks: { color: textColor, callback: v => '₹' + v } }
+      }
+    }
+  });
+}
+
+// =============================================
+// APPLIANCES
+// =============================================
+function toggleAddForm() {
+  const form = document.getElementById('add-form');
+  const isHidden = form.style.display === 'none';
+  form.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) {
+    const chips = document.getElementById('template-chips');
+    chips.innerHTML = TEMPLATES.map(t =>
+      `<div class="template-chip" onclick="fillTemplate('${t.name.replace(/'/g,"\\'")}',${t.watts},'${t.icon}')">${t.icon} ${t.name}</div>`
+    ).join('');
+    renderSuggestedDevices();
+  }
+}
+
+function fillTemplate(name, watts, icon) {
+  document.getElementById('app-name').value = name;
+  document.getElementById('app-watts').value = watts;
+  document.getElementById('app-icon').value = icon;
+}
+
+async function saveAppliance() {
+  const name = document.getElementById('app-name').value.trim();
+  const watts = parseInt(document.getElementById('app-watts').value);
+  const icon = document.getElementById('app-icon').value.trim() || '🔌';
+
+  if (!name || !watts || watts < 1) {
+    showToast('Please enter a valid name and wattage', 'error'); return;
+  }
+
+  const appliance = { id: Date.now().toString(), name, watts, icon };
+  cachedData.appliances.push(appliance);
+
+  try {
+    await saveAppliancesToFirestore();
+  } catch (e) {
+    showToast('Saved locally — sync failed', 'error');
+  }
+
+  document.getElementById('app-name').value = '';
+  document.getElementById('app-watts').value = '';
+  document.getElementById('app-icon').value = '';
+  document.getElementById('add-form').style.display = 'none';
+
+  renderAppliances();
+  renderCalculator();
+  showToast(`${icon} ${name} added!`, 'success');
+}
+
+function renderAppliances() {
+  const apps = cachedData.appliances;
+  const wrap = document.getElementById('appliance-list-wrap');
+
+  if (!apps.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">🔌</div><div class="empty-title">No appliances yet</div><div class="empty-sub">Click "Add Appliance" to get started</div></div>`;
+    return;
+  }
+
+  wrap.innerHTML = `<div class="appliance-grid">${apps.map(a => `
+    <div class="appliance-item">
+      <div class="appliance-icon">${a.icon}</div>
+      <div>
+        <div class="appliance-name">${a.name}</div>
+        <div class="appliance-watts">${a.watts}W · ${(a.watts/1000).toFixed(3)} kWh/hr</div>
+      </div>
+      <div class="appliance-actions">
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="openEdit('${a.id}')" title="Edit">✏️</button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteAppliance('${a.id}')" title="Delete">🗑</button>
+      </div>
+    </div>
+  `).join('')}</div>`;
+}
+
+function openEdit(id) {
+  const a = cachedData.appliances.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('edit-id').value = id;
+  document.getElementById('edit-name').value = a.name;
+  document.getElementById('edit-watts').value = a.watts;
+  document.getElementById('edit-icon').value = a.icon;
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+
+function closeModal(e) {
+  if (e.target.id === 'edit-modal') document.getElementById('edit-modal').style.display = 'none';
+}
+
+async function updateAppliance() {
+  const id = document.getElementById('edit-id').value;
+  const name = document.getElementById('edit-name').value.trim();
+  const watts = parseInt(document.getElementById('edit-watts').value);
+  const icon = document.getElementById('edit-icon').value.trim() || '🔌';
+
+  if (!name || !watts) { showToast('Invalid input', 'error'); return; }
+
+  const idx = cachedData.appliances.findIndex(x => x.id === id);
+  if (idx !== -1) {
+    cachedData.appliances[idx] = { ...cachedData.appliances[idx], name, watts, icon };
+    try { await saveAppliancesToFirestore(); } catch {}
+  }
+
+  document.getElementById('edit-modal').style.display = 'none';
+  renderAppliances(); renderCalculator();
+  showToast('Appliance updated!', 'success');
+}
+
+async function deleteAppliance(id) {
+  cachedData.appliances = cachedData.appliances.filter(x => x.id !== id);
+  try { await saveAppliancesToFirestore(); } catch {}
+  renderAppliances(); renderCalculator();
+  showToast('Appliance removed', 'success');
+}
+
+// =============================================
+// CALCULATOR
+// =============================================
+function renderCalculator() {
+  const apps = cachedData.appliances;
+  const budget = cachedData.budget;
+  if (budget) document.getElementById('monthly-budget').value = budget;
+
+  const rate = STATE_TARIFFS[currentUserState] || 6;
+  document.getElementById('tariff-display').textContent = `⚡ ${currentUserState || 'Unknown'} — ₹${rate}/kWh`;
+  document.getElementById('result-rate').textContent = `@ ₹${rate}/kWh`;
+
+  const usageList = document.getElementById('usage-list');
+  if (!apps.length) {
+    usageList.innerHTML = `<div class="empty-state" style="padding:24px"><div class="empty-icon" style="font-size:28px">🔌</div><div class="empty-title" style="font-size:15px">No appliances</div><div class="empty-sub">Add appliances in the Appliances tab first</div></div>`;
+    return;
+  }
+
+  usageList.innerHTML = apps.map(a => {
+    const h = usageHours[a.id] || 0;
+    const dailyCost = (a.watts * h / 1000) * rate;
+    return `
+    <div class="usage-row">
+      <span style="font-size:20px">${a.icon}</span>
+      <div class="usage-appliance-info">
+        <div style="font-weight:600;font-size:13px">${a.name}</div>
+        <div style="font-size:11px;color:var(--text2)">${a.watts}W</div>
+      </div>
+      <input class="usage-hours-input" type="number" min="0" max="24" step="0.5"
+        placeholder="hrs" value="${h || ''}"
+        oninput="updateHours('${a.id}', this.value)" />
+      <span style="font-size:11px;color:var(--text2)">hrs</span>
+      <div class="usage-cost">₹${dailyCost.toFixed(2)}</div>
+    </div>`;
+  }).join('');
+
+  recalculate();
+}
+
+function updateHours(id, val) {
+  usageHours[id] = parseFloat(val) || 0;
+  recalculate();
+}
+
+async function recalculate() {
+  const apps = cachedData.appliances;
+  const rate = STATE_TARIFFS[currentUserState] || 6;
+  const budget = parseFloat(document.getElementById('monthly-budget').value) || 0;
+
+  if (budget && budget !== cachedData.budget) {
+    cachedData.budget = budget;
+    try { await saveBudgetToFirestore(budget); } catch {}
+  }
+
+  let totalKwh = 0;
+  apps.forEach(a => { totalKwh += (a.watts * (usageHours[a.id] || 0)) / 1000; });
+
+  const dailyCost = totalKwh * rate;
+  const monthlyCost = dailyCost * 30;
+
+  document.getElementById('result-daily').textContent = `₹${dailyCost.toFixed(2)}`;
+  document.getElementById('result-monthly').textContent = `₹${monthlyCost.toFixed(2)}`;
+  document.getElementById('result-kwh').textContent = `${totalKwh.toFixed(3)} kWh/day`;
+
+  apps.forEach(a => {
+    const dailyCostApp = (a.watts * (usageHours[a.id] || 0) / 1000) * rate;
+    const costEl = document.querySelector(`[oninput="updateHours('${a.id}', this.value)"]`);
+    if (costEl) {
+      const row = costEl.closest('.usage-row');
+      if (row) { const costDiv = row.querySelector('.usage-cost'); if (costDiv) costDiv.textContent = `₹${dailyCostApp.toFixed(2)}`; }
+    }
+  });
+
+  const alertEl = document.getElementById('budget-alert');
+  const barWrap = document.getElementById('budget-bar-wrap');
+  const recEl = document.getElementById('recommendations');
+
+  if (budget > 0) {
+    barWrap.style.display = 'block';
+    const pct = Math.min((monthlyCost / budget) * 100, 100);
+    const bar = document.getElementById('budget-bar');
+    bar.style.width = pct + '%';
+    bar.style.background = pct > 100 ? 'var(--red)' : pct > 80 ? 'var(--yellow)' : 'var(--green)';
+    document.getElementById('bar-used').textContent = `₹${monthlyCost.toFixed(0)} estimated`;
+    document.getElementById('bar-budget').textContent = `₹${budget} budget`;
+
+    if (monthlyCost > budget) {
+      const over = monthlyCost - budget;
+      alertEl.innerHTML = `<div class="alert-box alert-over">⚠️ <div>Over budget by <strong>₹${over.toFixed(2)}/month</strong>. Reduce usage to stay within ₹${budget}/month.</div></div>`;
+      renderRecommendations(apps, rate, budget, over);
+    } else if (pct > 80) {
+      alertEl.innerHTML = `<div class="alert-box alert-warn">📉 <div>Approaching budget limit — ${pct.toFixed(0)}% used. Remaining: <strong>₹${(budget - monthlyCost).toFixed(2)}</strong></div></div>`;
+      recEl.innerHTML = '';
+    } else if (dailyCost > 0) {
+      alertEl.innerHTML = `<div class="alert-box alert-ok">✅ <div>Within budget! Remaining: <strong>₹${(budget - monthlyCost).toFixed(2)}/month</strong></div></div>`;
+      recEl.innerHTML = '';
+    } else {
+      alertEl.innerHTML = ''; recEl.innerHTML = '';
+    }
+  } else {
+    barWrap.style.display = 'none';
+    alertEl.innerHTML = ''; recEl.innerHTML = '';
+  }
+
+  renderSummaryChart(apps);
+}
+
+function renderRecommendations(apps, rate, budget, overAmount) {
+  const dailyBudget = budget / 30;
+  const totalKwh = apps.reduce((s, a) => s + (a.watts * (usageHours[a.id] || 0) / 1000), 0);
+  const currentDailyCost = totalKwh * rate;
+  if (currentDailyCost <= 0) return;
+
+  const reductionFactor = dailyBudget / currentDailyCost;
+  const recs = apps
+    .filter(a => (usageHours[a.id] || 0) > 0)
+    .sort((a, b) => b.watts - a.watts)
+    .slice(0, 4)
+    .map(a => {
+      const currentHrs = usageHours[a.id] || 0;
+      const suggestedHrs = +(currentHrs * reductionFactor).toFixed(1);
+      const saving = (a.watts * (currentHrs - suggestedHrs) / 1000) * rate * 30;
+      return { ...a, currentHrs, suggestedHrs, saving };
+    })
+    .filter(r => r.suggestedHrs < r.currentHrs);
+
+  const recEl = document.getElementById('recommendations');
+  if (!recs.length) { recEl.innerHTML = ''; return; }
+
+  recEl.innerHTML = `
+    <div class="form-label" style="margin-bottom:10px">💡 Smart Recommendations</div>
+    ${recs.map(r => `
+      <div class="rec-item">
+        <div class="rec-icon">${r.icon}</div>
+        <div>
+          <strong>${r.name}</strong>: Reduce from <strong>${r.currentHrs}h → ${r.suggestedHrs}h/day</strong>
+          <br><span style="color:var(--green)">Save ~₹${r.saving.toFixed(0)}/month</span>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+// =============================================
+// SAVE LOG → FIRESTORE
+// =============================================
+async function saveLog() {
+  const apps = cachedData.appliances;
+  const rate = STATE_TARIFFS[currentUserState] || 6;
+  const hasAnyUsage = apps.some(a => (usageHours[a.id] || 0) > 0);
+
+  if (!hasAnyUsage) { showToast('Set at least one appliance usage hour first', 'error'); return; }
+
+  const usages = apps
+    .filter(a => (usageHours[a.id] || 0) > 0)
+    .map(a => ({ name: a.name, icon: a.icon, hours: usageHours[a.id] || 0, watts: a.watts }));
+
+  const totalKwh = usages.reduce((s, u) => s + (u.watts * u.hours / 1000), 0);
+  const cost = totalKwh * rate;
+
+  const log = {
+    date: new Date().toISOString(),
+    usages,
+    totalKwh: +totalKwh.toFixed(3),
+    cost: +cost.toFixed(2),
+  };
+
+  // Update local cache
+  const today = new Date().toDateString();
+  const idx = cachedData.logs.findIndex(l => new Date(l.date).toDateString() === today);
+  if (idx !== -1) cachedData.logs.splice(idx, 1);
+  cachedData.logs.unshift(log);
+  cachedData.logs = cachedData.logs.slice(0, 365);
+
+  // Sync to Firestore
+  try {
+    await saveLogToFirestore(log);
+    showToast(`Today's log saved! ₹${cost.toFixed(2)} · ${totalKwh.toFixed(3)} kWh`, 'success');
+  } catch (e) {
+    console.error('Failed to save log to Firestore:', e);
+    showToast('Log saved locally — could not sync to cloud.', 'error');
+  }
+
+  renderLogs();
+}
+
+// =============================================
+// LOGS
+// =============================================
+function renderLogs() {
+  const logs = cachedData.logs || [];
+  const filterDate = document.getElementById('log-filter-date').value;
+  const container = document.getElementById('logs-container');
+
+  const filtered = filterDate
+    ? logs.filter(l => new Date(l.date).toISOString().startsWith(filterDate))
+    : logs;
+
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No logs yet</div><div class="empty-sub">Use the Calculator tab to log your daily usage</div></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Appliances Used</th>
+          <th>Units (kWh)</th>
+          <th>Cost (₹)</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map(l => {
+          const budget = cachedData.budget || 0;
+          const monthlyCost = l.cost * 30;
+          const over = budget && monthlyCost > budget;
+          const warn = budget && monthlyCost > budget * 0.8;
+          return `
+          <tr>
+            <td style="font-weight:600;white-space:nowrap">${new Date(l.date).toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short', year:'numeric' })}</td>
+            <td>
+              <div class="tag-list">${(l.usages || []).map(u => `<span class="tag">${u.icon} ${u.name} (${u.hours}h)</span>`).join('')}</div>
+            </td>
+            <td style="font-family:var(--font-display);font-weight:700">${l.totalKwh.toFixed(3)}</td>
+            <td class="log-monthly-cost">₹${l.cost.toFixed(2)}</td>
+            <td>
+              ${over ? `<span class="badge badge-red">⚠️ Over</span>` : warn ? `<span class="badge badge-yellow">📉 High</span>` : `<span class="badge badge-green">✅ OK</span>`}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <div class="export-hint" style="padding:12px 16px">
+      Showing ${filtered.length} of ${logs.length} entries
+      ${filterDate ? `<button class="link-btn" onclick="document.getElementById('log-filter-date').value='';renderLogs()"> · Clear filter</button>` : ''}
+    </div>
+  `;
+}
+
+function exportCSV() {
+  const logs = cachedData.logs || [];
+  if (!logs.length) { showToast('No logs to export', 'error'); return; }
+
+  const headers = ['Date', 'Appliances', 'Hours', 'kWh', 'Cost (₹)'];
+  const rows = logs.map(l => [
+    new Date(l.date).toLocaleDateString('en-IN'),
+    (l.usages || []).map(u => u.name).join('; '),
+    (l.usages || []).map(u => u.hours).join('; '),
+    l.totalKwh.toFixed(3),
+    l.cost.toFixed(2),
+  ]);
+
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `voltwise_logs_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('CSV exported!', 'success');
+}
+
+// =============================================
+// TOAST
+// =============================================
+function showToast(msg, type = 'success') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  toast.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${msg}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(20px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// =============================================
+// SUGGESTED DEVICES
+// =============================================
+function renderSuggestedDevices() {
+  const grid = document.getElementById('suggested-devices-grid');
+  if (!grid) return;
+  grid.innerHTML = SUGGESTED_DEVICES.map(d => `
+    <div class="suggested-device-card" onclick="fillFromSuggestion('${d.name.replace(/'/g,"\\'")}','${d.watts}','${d.icon}')" title="Click to auto-fill form">
+      <span class="sd-icon">${d.icon}</span>
+      <div class="sd-info">
+        <span class="sd-name">${d.name}</span>
+        <span class="sd-watts">~${d.watts}W</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function fillFromSuggestion(name, watts, icon) {
+  document.getElementById('app-name').value = name;
+  document.getElementById('app-watts').value = watts;
+  document.getElementById('app-icon').value = icon;
+  document.getElementById('app-name').focus();
+  showToast(`Filled: ${icon} ${name} (${watts}W)`, 'info');
+}
+
+// =============================================
+// TIME-BASED TRENDS
+// =============================================
+function switchTrendView(view) {
+  currentTrendView = view;
+  ['hourly','weekly','monthly'].forEach(v => {
+    const btn = document.getElementById(`trend-btn-${v}`);
+    if (!btn) return;
+    if (v === view) {
+      btn.style.background = 'rgba(0,212,255,0.15)';
+      btn.style.border = '1px solid var(--accent)';
+      btn.style.color = 'var(--accent)';
+    } else {
+      btn.style.background = 'var(--card2)';
+      btn.style.border = '1px solid var(--border)';
+      btn.style.color = 'var(--text)';
+    }
+  });
+  renderInlineTrendChart();
+}
+
+function renderInlineTrendChart() {
+  const canvas = document.getElementById('inline-trend-chart');
+  if (!canvas) return;
+  const logs = cachedData.logs || [];
+  const rate = STATE_TARIFFS[currentUserState] || 6;
+
+  let labels = [], data = [], labelStr = '';
+
+  if (currentTrendView === 'hourly') {
+    const apps = cachedData.appliances || [];
+    const totalKwh = apps.reduce((s, a) => s + (a.watts * (usageHours[a.id] || 0) / 1000), 0);
+    labels = Array.from({length: 24}, (_, i) => `${i}:00`);
+    data = labels.map((_, h) => {
+      let factor = 0.2;
+      if (h >= 6 && h <= 9) factor = 0.7;
+      else if (h >= 10 && h <= 11) factor = 0.4;
+      else if (h >= 12 && h <= 14) factor = 0.6;
+      else if (h >= 18 && h <= 22) factor = 1.0;
+      else if (h >= 23 || h <= 5) factor = 0.1;
+      return +(totalKwh / 24 * factor * 4).toFixed(3);
+    });
+    labelStr = 'Estimated hourly kWh distribution (today)';
+  } else if (currentTrendView === 'weekly') {
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const now = new Date();
+    labels = Array.from({length:7}, (_, i) => {
+      const d = new Date(now); d.setDate(now.getDate() - 6 + i);
+      return days[d.getDay()];
+    });
+    data = Array.from({length:7}, (_, i) => {
+      const d = new Date(now); d.setDate(now.getDate() - 6 + i);
+      const ds = d.toDateString();
+      const log = logs.find(l => new Date(l.date).toDateString() === ds);
+      return log ? +log.totalKwh.toFixed(3) : 0;
+    });
+    labelStr = 'Last 7 days — kWh per day';
+  } else {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const now = new Date();
+    labels = Array.from({length:6}, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+      return months[d.getMonth()] + ' ' + d.getFullYear().toString().slice(2);
+    });
+    data = Array.from({length:6}, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+      const monthLogs = logs.filter(l => {
+        const ld = new Date(l.date);
+        return ld.getMonth() === d.getMonth() && ld.getFullYear() === d.getFullYear();
+      });
+      return +monthLogs.reduce((s, l) => s + l.totalKwh, 0).toFixed(2);
+    });
+    labelStr = 'Last 6 months — total kWh';
+  }
+
+  document.getElementById('trend-summary-text').textContent = labelStr;
+
+  if (inlineTrendChart) inlineTrendChart.destroy();
+
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const tickColor = isDark ? '#8ba3c7' : '#3a5080';
+
+  inlineTrendChart = new Chart(canvas, {
+    type: currentTrendView === 'hourly' ? 'line' : 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: currentTrendView === 'monthly' ? 'Total kWh' : 'kWh',
+        data,
+        backgroundColor: currentTrendView === 'hourly'
+          ? 'rgba(0,212,255,0.1)'
+          : data.map((_, i) => `hsla(${190 + i * 15}, 80%, 60%, 0.7)`),
+        borderColor: 'rgba(0,212,255,0.8)',
+        borderWidth: currentTrendView === 'hourly' ? 2 : 0,
+        fill: currentTrendView === 'hourly',
+        tension: 0.4,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 8 } },
+        y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 10 } }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+// =============================================
+// SUMMARY CHART (Pie / Bar)
+// =============================================
+function switchSummaryChart(type) {
+  currentSummaryChartType = type;
+  document.getElementById('chart-type-pie').style.background = type === 'pie' ? 'rgba(0,212,255,0.15)' : 'var(--card2)';
+  document.getElementById('chart-type-pie').style.border = type === 'pie' ? '1px solid var(--accent)' : '1px solid var(--border)';
+  document.getElementById('chart-type-pie').style.color = type === 'pie' ? 'var(--accent)' : 'var(--text)';
+  document.getElementById('chart-type-bar').style.background = type === 'bar' ? 'rgba(0,212,255,0.15)' : 'var(--card2)';
+  document.getElementById('chart-type-bar').style.border = type === 'bar' ? '1px solid var(--accent)' : '1px solid var(--border)';
+  document.getElementById('chart-type-bar').style.color = type === 'bar' ? 'var(--accent)' : 'var(--text)';
+  renderSummaryChart(cachedData.appliances || []);
+}
+
+function renderSummaryChart(apps) {
+  const activeApps = apps.filter(a => (usageHours[a.id] || 0) > 0);
+  const section = document.getElementById('summary-chart-section');
+  const trendsSection = document.getElementById('time-trends-section');
+
+  if (!activeApps.length) {
+    if (section) section.style.display = 'none';
+    if (trendsSection) trendsSection.style.display = 'none';
+    return;
+  }
+
+  if (section) section.style.display = 'block';
+  if (trendsSection) trendsSection.style.display = 'block';
+
+  const labels = activeApps.map(a => `${a.icon} ${a.name}`);
+  const kwhData = activeApps.map(a => +(a.watts * (usageHours[a.id] || 0) / 1000).toFixed(3));
+  const palette = [
+    '#00d4ff','#a855f7','#00e676','#ffb300','#ff4444',
+    '#38bdf8','#f472b6','#34d399','#fbbf24','#f87171',
+    '#818cf8','#fb923c','#4ade80','#e879f9','#60a5fa',
+  ];
+  const colors = activeApps.map((_, i) => palette[i % palette.length]);
+  const totalKwh = kwhData.reduce((s, v) => s + v, 0);
+
+  const canvas = document.getElementById('summary-chart');
+  if (summaryChartInstance) summaryChartInstance.destroy();
+
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const tickColor = isDark ? '#8ba3c7' : '#3a5080';
+
+  summaryChartInstance = new Chart(canvas, {
+    type: currentSummaryChartType,
+    data: {
+      labels,
+      datasets: [{
+        data: kwhData,
+        backgroundColor: colors,
+        borderColor: isDark ? '#0f1629' : '#fff',
+        borderWidth: currentSummaryChartType === 'pie' ? 2 : 0,
+        borderRadius: currentSummaryChartType === 'bar' ? 6 : 0,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 500 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const pct = totalKwh > 0 ? ((ctx.parsed / totalKwh) * 100).toFixed(1) : 0;
+              return currentSummaryChartType === 'pie'
+                ? ` ${ctx.parsed.toFixed(3)} kWh (${pct}%)`
+                : ` ${ctx.parsed.toFixed(3)} kWh`;
+            }
+          }
+        }
+      },
+      scales: currentSummaryChartType === 'bar' ? {
+        x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 10 } } },
+        y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 10 } }, beginAtZero: true }
+      } : {}
+    }
+  });
+
+  const legend = document.getElementById('summary-legend');
+  if (legend) {
+    legend.innerHTML = activeApps.map((a, i) => {
+      const pct = totalKwh > 0 ? ((kwhData[i] / totalKwh) * 100).toFixed(1) : 0;
+      return `
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:50%;background:${colors[i]};flex-shrink:0"></div>
+          <span>${a.icon} ${a.name}</span>
+          <span style="margin-left:auto;color:var(--accent);font-weight:600;font-family:var(--font-display)">${kwhData[i].toFixed(3)}kWh</span>
+          <span style="color:var(--text3);font-size:11px">${pct}%</span>
+        </div>`;
+    }).join('');
+  }
+
+  renderInlineTrendChart();
+}
+
+// =============================================
+// DOMContentLoaded — init state dropdown + Enter key support
+// =============================================
+document.addEventListener('DOMContentLoaded', () => {
+  initStateSelect();
+
+  // Allow pressing Enter to submit login
+  document.getElementById('login-password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+  document.getElementById('login-email').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('login-password').focus();
+  });
+  document.getElementById('reg-password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doRegister();
+  });
+});
+</script>
+</body>
+</html>
